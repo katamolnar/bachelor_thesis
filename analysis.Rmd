@@ -1,0 +1,585 @@
+---
+title: "Analysis"
+author: "Kata Molnar"
+date: "24/11/2020"
+output:   
+  md_document:
+    variant: markdown_github
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# load packages and the data
+  # load Rmisc (+plyr) first bc otherwise it messes up dplyr
+library(Rmisc)
+pacman::p_load(tidyverse, dplyr, ggplot2, patchwork, RColorBrewer, plotrix, lme4, lmerTest, lmtest, car, AER, jtools)
+
+# set directory
+setwd("C:/Users/molna/Desktop/AU/5th_semester/Bachelor")
+
+# load df with pairs
+df1 <- read.csv("run_0.1.csv", sep=",")
+
+# load df with individuals
+df2 <- read.csv("run_0.1_ind.csv", sep=",")
+
+# rename columns
+names(df1)[names(df1) == "X.run.number."] <- "run"
+names(df1)[names(df1) == "X.step."] <- "turns"
+names(df1)[names(df1) == "words.said"] <- "words said"
+
+names(df2)[names(df2) == "X.run.number."] <- "run"
+names(df2)[names(df2) == "X.step."] <- "turns"
+names(df2)[names(df2) == "words.said"] <- "words said"
+
+# make person a character (from factor)
+df1$person1 <- as.character(df1$person1)
+df1$person2 <- as.character(df1$person2)
+
+## simplify person1 & 2 column contents
+
+#for df1
+df1$person1[df1$person1 == "animals_gigaword.csv"] <- "gigaword"
+df1$person1[df1$person1 == "animals_google.csv"] <- "google"
+df1$person1[df1$person1 == "animals_twitter.csv"] <- "twitter"
+df1$person1[df1$person1 == "animals_wikipedia.csv"] <- "wiki"
+
+df1$person2[df1$person2 == "animals_gigaword.csv"] <- "gigaword"
+df1$person2[df1$person2 == "animals_google.csv"] <- "google"
+df1$person2[df1$person2 == "animals_twitter.csv"] <- "twitter"
+df1$person2[df1$person2 == "animals_wikipedia.csv"] <- "wiki"
+
+## for df2
+df2$person1 <- as.character(df2$person1)
+df2$person1[df2$person1 == "animals_gigaword.csv"] <- "gigaword"
+df2$person1[df2$person1 == "animals_google.csv"] <- "google"
+df2$person1[df2$person1 == "animals_twitter.csv"] <- "twitter"
+df2$person1[df2$person1 == "animals_wikipedia.csv"] <- "wiki"
+
+df2$person2 <- NA
+
+df2$div[df2$person1 == "gigaword"] <- "individual"
+df2$div[df2$person1 == "google"] <- "individual"
+df2$div[df2$person1 == "twitter"] <- "individual"
+df2$div[df2$person1 == "wiki"] <- "individual"
+
+# add div (diversity) column for ordinal variable
+df1$div <- NA
+
+df1$div[df1$person1 == "gigaword" & df1$person2 == "google" | df1$person1 == "google" & df1$person2 == "gigaword"] <- "giga_google"
+
+df1$div[df1$person1 == "gigaword" & df1$person2 == "twitter" | df1$person1 == "twitter" & df1$person2 == "gigaword"] <- "giga_tw"
+
+df1$div[df1$person1 == "gigaword" & df1$person2 == "wiki" | df1$person1 == "wiki" & df1$person2 == "gigaword"] <- "giga_wiki"
+
+df1$div[df1$person1 == "google" & df1$person2 == "twitter" | df1$person1 == "twitter" & df1$person2 == "google"] <- "google_tw"
+
+df1$div[df1$person1 == "google" & df1$person2 == "wiki" | df1$person1 == "wiki" & df1$person2 == "google"] <- "google_wiki"
+
+df1$div[df1$person1 == "twitter" & df1$person2 == "wiki" | df1$person1 == "wiki" & df1$person2 == "twitter"] <- "tw_wiki"
+
+df1$div[df1$person1 == "gigaword" & df1$person2 == "gigaword"] <- "same_network"
+df1$div[df1$person1 == "google" & df1$person2 == "google"] <- "same_network"
+df1$div[df1$person1 == "twitter" & df1$person2 == "twitter"] <- "same_network"
+df1$div[df1$person1 == "wiki" & df1$person2 == "wiki"] <- "same_network"
+
+# specify ordinal variables with levels
+df1$div <- factor(df1$div, order = TRUE, levels = c("same_network", "giga_wiki", "google_wiki", "giga_google", "google_tw", "tw_wiki", "giga_tw"))
+
+# rbind pairs and individuals
+df_all <- rbind(df1, df2)
+
+# Specify that they are ordinal variables with the given levels
+df_all$div <- factor(df_all$div, order = TRUE, levels = c("individual", "same_network", "giga_wiki", "google_wiki", "giga_google", "google_tw", "tw_wiki", "giga_tw"))
+
+```
+
+```{r}
+### Test diversity + expertise hypotheses
+# H1: performance ~ diversity + network_connectivity
+# H2: performance ~ diversity * network_connectivity
+
+# poisson regression bc outcome is count variable
+m3 <- glm(turns ~ div * threshold, data = df1, family = poisson)
+summary(m3)
+
+m4 <- glm(turns ~ div + threshold, data = df1, family = poisson)
+summary(m4)
+
+######################################
+
+### check for overdispersion (if variance is considerably bigger than the mean)
+
+mean(df1$turns[df1$div == "giga_wiki"])
+var(df1$turns[df1$div == "giga_wiki"])
+
+# from tutorial
+plot(log(fitted(m4)),log((df1$turns-fitted(m4))^2),xlab=expression(hat(mu)),ylab=expression((y-hat(mu))^2),pch=20,col="blue") +
+  abline(0,1) ## 'variance = mean' line
+
+dp = sum(residuals(m4,type ="pearson")^2)/m4$df.residual
+dp
+
+dispersiontest(m3)
+
+summary(m4,dispersion = dp)
+
+# use quasi-Poisson instead of poisson bc of overdispersion
+
+m3_qpoi = glm(turns ~ div * threshold, data = df1, family = quasipoisson)
+summary(m3_qpoi)
+
+m5_qpoi = glm(turns ~ div + threshold, data = df1, family = quasipoisson(link = "log"))
+summary(m5_qpoi)
+summary(m3_qpoi)
+# 8.191893 dispersion -> variance of the random component is much bigger than the mean -> still indicates poor model fit
+
+# get odds ratios
+# summ(m5_qpoi) # get only beta values
+summ(m5_qpoi, exp = TRUE) # get odds ratios instead of the beta estimate
+summ(m3_qpoi, exp = TRUE)
+
+anova(m5_qpoi, m3_qpoi, test = "Chisq") # interaction model is supposedly better
+
+```
+
+```{r}
+## filtering network pairs for future use & descriptive statistics
+
+# Gigaword-Google pairs
+giga_google <- filter(df1, div == "giga_google")
+
+giga_google_stats <- giga_google%>% group_by(threshold) %>%
+  summarise(mean(turns),
+            max(turns),
+            min(turns),
+            var(turns))
+
+# change the names
+names(giga_google_stats)[names(giga_google_stats) == "mean(turns)"] <- "mean_turns"
+names(giga_google_stats)[names(giga_google_stats) == "max(turns)"] <- "max_turns"
+names(giga_google_stats)[names(giga_google_stats) == "min(turns)"] <- "min_turns"
+names(giga_google_stats)[names(giga_google_stats) == "var(turns)"] <- "var_turns"
+
+# calculate 95% CIs
+#t.test(giga_google_stats$turns[giga_google_stats$threshold == 0.1], conf.level = 0.95) # 39.95183 44.31317
+#t.test(giga_google_stats$turns[giga_google_stats$threshold == 0.2], conf.level = 0.95) # 27.98358 30.71142
+#t.test(giga_google_stats$turns[giga_google_stats$threshold == 0.3], conf.level = 0.95) # 14.70309 16.84691
+
+# add CIs to table
+giga_google_stats$CI_lower <- c(39.95183, 27.98358, 14.70309)
+giga_google_stats$CI_upper <- c(44.31317, 30.71142, 16.84691)
+
+# add condition column
+giga_google_stats$sem_netw <- c("giga_google", "giga_google", "giga_google")
+
+
+# Gigaword-Twitter pairs
+gigaw_tw <- filter(df1, div == "giga_tw")
+
+gigaw_tw_stats <- gigaw_tw%>% group_by(threshold) %>%
+  summarise(mean(turns),
+            max(turns),
+            min(turns),
+            var(turns))
+
+# change the names
+names(gigaw_tw_stats)[names(gigaw_tw_stats) == "mean(turns)"] <- "mean_turns"
+names(gigaw_tw_stats)[names(gigaw_tw_stats) == "max(turns)"] <- "max_turns"
+names(gigaw_tw_stats)[names(gigaw_tw_stats) == "min(turns)"] <- "min_turns"
+names(gigaw_tw_stats)[names(gigaw_tw_stats) == "var(turns)"] <- "var_turns"
+
+# calculate 95% CIs
+#t.test(gigaw_tw$turns[gigaw_tw$threshold == 0.1], conf.level = 0.95) # 40.19754 44.07246
+#t.test(gigaw_tw$turns[gigaw_tw$threshold == 0.2], conf.level = 0.95) # 29.43768 32.36232
+#t.test(gigaw_tw$turns[gigaw_tw$threshold == 0.3], conf.level = 0.95) # 15.36736 17.59264
+
+# add CIs to table
+gigaw_tw_stats$CI_lower <- c(40.19754, 29.43768, 15.36736)
+gigaw_tw_stats$CI_upper <- c(44.07246, 32.36232, 17.59264)
+
+gigaw_tw_stats$sem_netw <- c("giga_tw","giga_tw","giga_tw")
+
+
+# Gigaword-Wikipedia pairs
+gigaw_wiki <- filter(df1, div == "giga_wiki")
+
+gigaw_wiki_stats <- gigaw_wiki%>% group_by(threshold) %>%
+  summarise(mean(turns),
+            max(turns),
+            min(turns),
+            var(turns))
+
+# change the names
+names(gigaw_wiki_stats)[names(gigaw_wiki_stats) == "mean(turns)"] <- "mean_turns"
+names(gigaw_wiki_stats)[names(gigaw_wiki_stats) == "max(turns)"] <- "max_turns"
+names(gigaw_wiki_stats)[names(gigaw_wiki_stats) == "min(turns)"] <- "min_turns"
+names(gigaw_wiki_stats)[names(gigaw_wiki_stats) == "var(turns)"] <- "var_turns"
+
+# calculate 95% CIs
+#t.test(gigaw_wiki$turns[gigaw_wiki$threshold == 0.1], conf.level = 0.95) # 39.51353 43.54647
+#t.test(gigaw_wiki$turns[gigaw_wiki$threshold == 0.2], conf.level = 0.95) # 28.82374 31.45126
+#t.test(gigaw_wiki$turns[gigaw_wiki$threshold == 0.3], conf.level = 0.95) # 15.99267 18.19233
+
+# add CIs to table
+gigaw_wiki_stats$CI_lower <- c(39.51353, 28.82374, 15.99267)
+gigaw_wiki_stats$CI_upper <- c(43.54647, 31.45126, 18.19233)
+
+gigaw_wiki_stats$sem_netw <- c("giga_wiki", "giga_wiki", "giga_wiki")
+
+
+# Google-Twitter pairs
+google_tw <- filter(df1, div == "google_tw")
+google_tw_stats <- google_tw%>% group_by(threshold) %>%
+  summarise(mean(turns),
+            max(turns),
+            min(turns),
+            var(turns))
+
+# change the names
+names(google_tw_stats)[names(google_tw_stats) == "mean(turns)"] <- "mean_turns"
+names(google_tw_stats)[names(google_tw_stats) == "max(turns)"] <- "max_turns"
+names(google_tw_stats)[names(google_tw_stats) == "min(turns)"] <- "min_turns"
+names(google_tw_stats)[names(google_tw_stats) == "var(turns)"] <- "var_turns"
+
+# calculate 95% CIs
+#t.test(google_tw$turns[google_tw$threshold == 0.1], conf.level = 0.95) # 43.01477 47.15523
+#t.test(google_tw$turns[google_tw$threshold == 0.2], conf.level = 0.95) # 31.59648 34.43352
+#t.test(google_tw$turns[google_tw$threshold == 0.3], conf.level = 0.95) # 25.01068 27.74932
+
+# add CIs to table
+google_tw_stats$CI_lower <- c(43.01477, 31.59648, 25.01068)
+google_tw_stats$CI_upper <- c(47.15523, 34.43352, 27.74932)
+
+# add column with condition
+google_tw_stats$sem_netw <- c("google_tw", "google_tw", "google_tw")
+
+
+# Google-Wikipedia pairs
+
+google_wiki <- filter(df1, div == "google_wiki")
+
+google_wiki_stats <- google_wiki%>% group_by(threshold) %>%
+  summarise(mean(turns),
+            max(turns),
+            min(turns),
+            var(turns))
+
+# change the names
+names(google_wiki_stats)[names(google_wiki_stats) == "mean(turns)"] <- "mean_turns"
+names(google_wiki_stats)[names(google_wiki_stats) == "max(turns)"] <- "max_turns"
+names(google_wiki_stats)[names(google_wiki_stats) == "min(turns)"] <- "min_turns"
+names(google_wiki_stats)[names(google_wiki_stats) == "var(turns)"] <- "var_turns"
+
+# calculate 95% CIs
+#t.test(google_wiki$turns[google_wiki$threshold == 0.1], conf.level = 0.95) # 39.56626 43.42874
+#t.test(google_wiki$turns[google_wiki$threshold == 0.2], conf.level = 0.95) # 30.3324 33.4126
+#t.test(google_wiki$turns[google_wiki$threshold == 0.3], conf.level = 0.95) # 19.89314 22.26186
+
+# add CIs to table
+google_wiki_stats$CI_lower <- c(39.56626, 30.3324, 19.89314)
+google_wiki_stats$CI_upper <- c(43.42874, 33.4126, 22.26186)
+
+# add condition_column
+google_wiki_stats$sem_netw <- c("google_wiki", "google_wiki", "google_wiki")
+
+
+# Twitter-Wikipedia pairs
+tw_wiki <- filter(df1, div == "tw_wiki")
+tw_wiki_stats <- tw_wiki%>% group_by(threshold) %>%
+  summarise(mean(turns),
+            max(turns),
+            min(turns),
+            var(turns))
+
+# change the names
+names(tw_wiki_stats)[names(tw_wiki_stats) == "mean(turns)"] <- "mean_turns"
+names(tw_wiki_stats)[names(tw_wiki_stats) == "max(turns)"] <- "max_turns"
+names(tw_wiki_stats)[names(tw_wiki_stats) == "min(turns)"] <- "min_turns"
+names(tw_wiki_stats)[names(tw_wiki_stats) == "var(turns)"] <- "var_turns"
+
+# calculate 95% CIs
+#t.test(tw_wiki$turns[tw_wiki$threshold == 0.1], conf.level = 0.95) # 42.21524 46.09976
+#t.test(tw_wiki$turns[tw_wiki$threshold == 0.2], conf.level = 0.95) # 31.85817 34.78183
+#t.test(tw_wiki$turns[tw_wiki$threshold == 0.3], conf.level = 0.95) # 22.58642 25.27358
+
+# add CIs to table
+tw_wiki_stats$CI_lower <- c(42.21524, 31.85817, 22.58642)
+tw_wiki_stats$CI_upper <- c(46.09976, 34.78183, 25.27358)
+
+# add column with condition
+tw_wiki_stats$sem_netw <- c("tw_wiki", "tw_wiki", "tw_wiki")
+
+# combine all diff pair combinations
+all <- rbind(google_gigaw_stats, gigaw_tw_stats, gigaw_wiki_stats, tw_google_stats, wiki_google_stats, tw_wiki_stats)
+
+
+# Same-network pairs
+same_n <- filter(df1, div == "same_network")
+
+same_n_stats <- same_n%>% group_by(threshold) %>%
+  summarise(mean(turns),
+            max(turns),
+            min(turns),
+            var(turns))
+
+# change the names
+names(same_n_stats)[names(same_n_stats) == "mean(turns)"] <- "mean_turns"
+names(same_n_stats)[names(same_n_stats) == "max(turns)"] <- "max_turns"
+names(same_n_stats)[names(same_n_stats) == "min(turns)"] <- "min_turns"
+names(same_n_stats)[names(same_n_stats) == "var(turns)"] <- "var_turns"
+
+# calculate 95% CIs
+t.test(same_n$turns[same_n$threshold == 0.1], conf.level = 0.95) # 40.09577 42.93923
+t.test(same_n$turns[same_n$threshold == 0.2], conf.level = 0.95) # 29.46835 31.56665
+t.test(same_n$turns[same_n$threshold == 0.3], conf.level = 0.95) # 21.70625 23.49625
+
+# add CIs to table
+same_n_stats$CI_lower <- c(40.09577, 29.46835, 21.70625)
+same_n_stats$CI_upper <- c(42.93923, 31.56665, 23.49625)
+
+# add column with condition
+same_n_stats$sem_netw <- c("same_network", "same_network", "same_network")
+
+
+# Individuals
+ind_stats <- df2%>% group_by(threshold) %>%
+  summarise(mean(turns),
+            max(turns),
+            min(turns),
+            var(turns))
+
+# change the names
+names(ind_stats)[names(ind_stats) == "mean(turns)"] <- "mean_turns"
+names(ind_stats)[names(ind_stats) == "max(turns)"] <- "max_turns"
+names(ind_stats)[names(ind_stats) == "min(turns)"] <- "min_turns"
+names(ind_stats)[names(ind_stats) == "var(turns)"] <- "var_turns"
+
+# calculate 95% CIs
+t.test(df2$turns[df2$threshold == 0.1], conf.level = 0.95) # 19.87783 21.25967
+t.test(df2$turns[df2$threshold == 0.2], conf.level = 0.95) # 19.61986 20.99264
+t.test(df2$turns[df2$threshold == 0.3], conf.level = 0.95) # 15.7123 16.9552
+
+# add CIs to table
+ind_stats$CI_lower <- c(19.87783, 19.61986, 15.7123)
+ind_stats$CI_upper <- c(21.25967, 20.99264, 16.9552)
+
+# add column with condition
+ind_stats$sem_netw <- c("individual", "individual", "individual")
+
+
+# rbind them together
+a <- rbind(all, same_n_stats)
+b <- rbind(a, ind_stats)
+names(b)[names(b) == "sem_netw"] <- "div"
+
+# save them in a table
+write.table(b, "descr_stats.csv", sep = ",")
+
+```
+
+```{r}
+# CIs for df1
+
+# same-network
+df1$CI_lower[df1$threshold == 0.1 & df1$div == "same_network"] <- b$CI_lower[b$threshold == 0.1 & b$div == "same_network"]
+df1$CI_upper[df1$threshold == 0.1 & df1$div == "same_network"] <- b$CI_upper[b$threshold == 0.1 & b$div == "same_network"]
+df1$CI_lower[df1$threshold == 0.2 & df1$div == "same_network"] <- b$CI_lower[b$threshold == 0.2 & b$div == "same_network"]
+df1$CI_upper[df1$threshold == 0.2 & df1$div == "same_network"] <- b$CI_upper[b$threshold == 0.2 & b$div == "same_network"]
+df1$CI_lower[df1$threshold == 0.3 & df1$div == "same_network"] <- b$CI_lower[b$threshold == 0.3 & b$div == "same_network"]
+df1$CI_upper[df1$threshold == 0.3 & df1$div == "same_network"] <- b$CI_upper[b$threshold == 0.3 & b$div == "same_network"]
+
+# gigaword-google
+df1$CI_lower[df1$threshold == 0.1 & df1$div == "giga_google"] <- b$CI_lower[b$threshold == 0.1 & b$div == "giga_google"]
+df1$CI_upper[df1$threshold == 0.1 & df1$div == "giga_google"] <- b$CI_upper[b$threshold == 0.1 & b$div == "giga_google"]
+df1$CI_lower[df1$threshold == 0.2 & df1$div == "giga_google"] <- b$CI_lower[b$threshold == 0.2 & b$div == "giga_google"]
+df1$CI_upper[df1$threshold == 0.2 & df1$div == "giga_google"] <- b$CI_upper[b$threshold == 0.2 & b$div == "giga_google"]
+df1$CI_lower[df1$threshold == 0.3 & df1$div == "giga_google"] <- b$CI_lower[b$threshold == 0.3 & b$div == "giga_google"]
+df1$CI_upper[df1$threshold == 0.3 & df1$div == "giga_google"] <- b$CI_upper[b$threshold == 0.3 & b$div == "giga_google"]
+
+# gigaword-twitter
+df1$CI_lower[df1$threshold == 0.1 & df1$div == "giga_tw"] <- b$CI_lower[b$threshold == 0.1 & b$div == "giga_tw"]
+df1$CI_upper[df1$threshold == 0.1 & df1$div == "giga_tw"] <- b$CI_upper[b$threshold == 0.1 & b$div == "giga_tw"]
+df1$CI_lower[df1$threshold == 0.2 & df1$div == "giga_tw"] <- b$CI_lower[b$threshold == 0.2 & b$div == "giga_tw"]
+df1$CI_upper[df1$threshold == 0.2 & df1$div == "giga_tw"] <- b$CI_upper[b$threshold == 0.2 & b$div == "giga_tw"]
+df1$CI_lower[df1$threshold == 0.3 & df1$div == "giga_tw"] <- b$CI_lower[b$threshold == 0.3 & b$div == "giga_tw"]
+df1$CI_upper[df1$threshold == 0.3 & df1$div == "giga_tw"] <- b$CI_upper[b$threshold == 0.3 & b$div == "giga_tw"]
+
+# gigaword-wikipedia
+df1$CI_lower[df1$threshold == 0.1 & df1$div == "giga_wiki"] <- b$CI_lower[b$threshold == 0.1 & b$div == "giga_wiki"]
+df1$CI_upper[df1$threshold == 0.1 & df1$div == "giga_wiki"] <- b$CI_upper[b$threshold == 0.1 & b$div == "giga_wiki"]
+df1$CI_lower[df1$threshold == 0.2 & df1$div == "giga_wiki"] <- b$CI_lower[b$threshold == 0.2 & b$div == "giga_wiki"]
+df1$CI_upper[df1$threshold == 0.2 & df1$div == "giga_wiki"] <- b$CI_upper[b$threshold == 0.2 & b$div == "giga_wiki"]
+df1$CI_lower[df1$threshold == 0.3 & df1$div == "giga_wiki"] <- b$CI_lower[b$threshold == 0.3 & b$div == "giga_wiki"]
+df1$CI_upper[df1$threshold == 0.3 & df1$div == "giga_wiki"] <- b$CI_upper[b$threshold == 0.3 & b$div == "giga_wiki"]
+
+# google-twitter
+df1$CI_lower[df1$threshold == 0.1 & df1$div == "google_tw"] <- b$CI_lower[b$threshold == 0.1 & b$div == "google_tw"]
+df1$CI_upper[df1$threshold == 0.1 & df1$div == "google_tw"] <- b$CI_upper[b$threshold == 0.1 & b$div == "google_tw"]
+df1$CI_lower[df1$threshold == 0.2 & df1$div == "google_tw"] <- b$CI_lower[b$threshold == 0.2 & b$div == "google_tw"]
+df1$CI_upper[df1$threshold == 0.2 & df1$div == "google_tw"] <- b$CI_upper[b$threshold == 0.2 & b$div == "google_tw"]
+df1$CI_lower[df1$threshold == 0.3 & df1$div == "google_tw"] <- b$CI_lower[b$threshold == 0.3 & b$div == "google_tw"]
+df1$CI_upper[df1$threshold == 0.3 & df1$div == "google_tw"] <- b$CI_upper[b$threshold == 0.3 & b$div == "google_tw"]
+
+# google-wikipedia
+df1$CI_lower[df1$threshold == 0.1 & df1$div == "google_wiki"] <- b$CI_lower[b$threshold == 0.1 & b$div == "google_wiki"]
+df1$CI_upper[df1$threshold == 0.1 & df1$div == "google_wiki"] <- b$CI_upper[b$threshold == 0.1 & b$div == "google_wiki"]
+df1$CI_lower[df1$threshold == 0.2 & df1$div == "google_wiki"] <- b$CI_lower[b$threshold == 0.2 & b$div == "google_wiki"]
+df1$CI_upper[df1$threshold == 0.2 & df1$div == "google_wiki"] <- b$CI_upper[b$threshold == 0.2 & b$div == "google_wiki"]
+df1$CI_lower[df1$threshold == 0.3 & df1$div == "google_wiki"] <- b$CI_lower[b$threshold == 0.3 & b$div == "google_wiki"]
+df1$CI_upper[df1$threshold == 0.3 & df1$div == "google_wiki"] <- b$CI_upper[b$threshold == 0.3 & b$div == "google_wiki"]
+
+# twitter-wikipedia
+df1$CI_lower[df1$threshold == 0.1 & df1$div == "tw_wiki"] <- b$CI_lower[b$threshold == 0.1 & b$div == "tw_wiki"]
+df1$CI_upper[df1$threshold == 0.1 & df1$div == "tw_wiki"] <- b$CI_upper[b$threshold == 0.1 & b$div == "tw_wiki"]
+df1$CI_lower[df1$threshold == 0.2 & df1$div == "tw_wiki"] <- b$CI_lower[b$threshold == 0.2 & b$div == "tw_wiki"]
+df1$CI_upper[df1$threshold == 0.2 & df1$div == "tw_wiki"] <- b$CI_upper[b$threshold == 0.2 & b$div == "tw_wiki"]
+df1$CI_lower[df1$threshold == 0.3 & df1$div == "tw_wiki"] <- b$CI_lower[b$threshold == 0.3 & b$div == "tw_wiki"]
+df1$CI_upper[df1$threshold == 0.3 & df1$div == "tw_wiki"] <- b$CI_upper[b$threshold == 0.3 & b$div == "tw_wiki"]
+
+# plot
+df1_boxplot <- ggplot(df1, aes(div, turns, color = div, group = div)) + 
+  geom_boxplot(aes(group = div)) +
+  geom_errorbar(aes(ymin = CI_lower, ymax = CI_upper)) +
+  xlab("Networks ordered by diversity (<)") + 
+  ylab("Number of turns") + 
+  ggtitle("Performances of all pairings") + 
+  scale_color_brewer(palette="Dark2") +
+  facet_wrap(~threshold) +
+  theme_bw()
+df1_boxplot + stat_summary(fun.y=mean, geom="point", shape=1, size=1.2) +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank())
+```
+
+```{r}
+# CIs for df_all
+
+# individuals
+df_all$CI_lower[df_all$threshold == 0.1 & df_all$div == "individual"] <- b$CI_lower[b$threshold == 0.1 & b$div == "individual"]
+df_all$CI_upper[df_all$threshold == 0.1 & df_all$div == "individual"] <- b$CI_upper[b$threshold == 0.1 & b$div == "individual"]
+df_all$CI_lower[df_all$threshold == 0.2 & df_all$div == "individual"] <- b$CI_lower[b$threshold == 0.2 & b$div == "individual"]
+df_all$CI_upper[df_all$threshold == 0.2 & df_all$div == "individual"] <- b$CI_upper[b$threshold == 0.2 & b$div == "individual"]
+df_all$CI_lower[df_all$threshold == 0.3 & df_all$div == "individual"] <- b$CI_lower[b$threshold == 0.3 & b$div == "individual"]
+df_all$CI_upper[df_all$threshold == 0.3 & df_all$div == "individual"] <- b$CI_upper[b$threshold == 0.3 & b$div == "individual"]
+
+# same-network
+df_all$CI_lower[df_all$threshold == 0.1 & df_all$div == "same_network"] <- b$CI_lower[b$threshold == 0.1 & b$div == "same_network"]
+df_all$CI_upper[df_all$threshold == 0.1 & df_all$div == "same_network"] <- b$CI_upper[b$threshold == 0.1 & b$div == "same_network"]
+df_all$CI_lower[df_all$threshold == 0.2 & df_all$div == "same_network"] <- b$CI_lower[b$threshold == 0.2 & b$div == "same_network"]
+df_all$CI_upper[df_all$threshold == 0.2 & df_all$div == "same_network"] <- b$CI_upper[b$threshold == 0.2 & b$div == "same_network"]
+df_all$CI_lower[df_all$threshold == 0.3 & df_all$div == "same_network"] <- b$CI_lower[b$threshold == 0.3 & b$div == "same_network"]
+df_all$CI_upper[df_all$threshold == 0.3 & df_all$div == "same_network"] <- b$CI_upper[b$threshold == 0.3 & b$div == "same_network"]
+
+# gigaword-google
+df_all$CI_lower[df_all$threshold == 0.1 & df_all$div == "giga_google"] <- b$CI_lower[b$threshold == 0.1 & b$div == "giga_google"]
+df_all$CI_upper[df_all$threshold == 0.1 & df_all$div == "giga_google"] <- b$CI_upper[b$threshold == 0.1 & b$div == "giga_google"]
+df_all$CI_lower[df_all$threshold == 0.2 & df_all$div == "giga_google"] <- b$CI_lower[b$threshold == 0.2 & b$div == "giga_google"]
+df_all$CI_upper[df_all$threshold == 0.2 & df_all$div == "giga_google"] <- b$CI_upper[b$threshold == 0.2 & b$div == "giga_google"]
+df_all$CI_lower[df_all$threshold == 0.3 & df_all$div == "giga_google"] <- b$CI_lower[b$threshold == 0.3 & b$div == "giga_google"]
+df_all$CI_upper[df_all$threshold == 0.3 & df_all$div == "giga_google"] <- b$CI_upper[b$threshold == 0.3 & b$div == "giga_google"]
+
+# gigaword-twitter
+df_all$CI_lower[df_all$threshold == 0.1 & df_all$div == "giga_tw"] <- b$CI_lower[b$threshold == 0.1 & b$div == "giga_tw"]
+df_all$CI_upper[df_all$threshold == 0.1 & df_all$div == "giga_tw"] <- b$CI_upper[b$threshold == 0.1 & b$div == "giga_tw"]
+df_all$CI_lower[df_all$threshold == 0.2 & df_all$div == "giga_tw"] <- b$CI_lower[b$threshold == 0.2 & b$div == "giga_tw"]
+df_all$CI_upper[df_all$threshold == 0.2 & df_all$div == "giga_tw"] <- b$CI_upper[b$threshold == 0.2 & b$div == "giga_tw"]
+df_all$CI_lower[df_all$threshold == 0.3 & df_all$div == "giga_tw"] <- b$CI_lower[b$threshold == 0.3 & b$div == "giga_tw"]
+df_all$CI_upper[df_all$threshold == 0.3 & df_all$div == "giga_tw"] <- b$CI_upper[b$threshold == 0.3 & b$div == "giga_tw"]
+
+# gigaword-wikipedia
+df_all$CI_lower[df_all$threshold == 0.1 & df_all$div == "giga_wiki"] <- b$CI_lower[b$threshold == 0.1 & b$div == "giga_wiki"]
+df_all$CI_upper[df_all$threshold == 0.1 & df_all$div == "giga_wiki"] <- b$CI_upper[b$threshold == 0.1 & b$div == "giga_wiki"]
+df_all$CI_lower[df_all$threshold == 0.2 & df_all$div == "giga_wiki"] <- b$CI_lower[b$threshold == 0.2 & b$div == "giga_wiki"]
+df_all$CI_upper[df_all$threshold == 0.2 & df_all$div == "giga_wiki"] <- b$CI_upper[b$threshold == 0.2 & b$div == "giga_wiki"]
+df_all$CI_lower[df_all$threshold == 0.3 & df_all$div == "giga_wiki"] <- b$CI_lower[b$threshold == 0.3 & b$div == "giga_wiki"]
+df_all$CI_upper[df_all$threshold == 0.3 & df_all$div == "giga_wiki"] <- b$CI_upper[b$threshold == 0.3 & b$div == "giga_wiki"]
+
+# google-twitter
+df_all$CI_lower[df_all$threshold == 0.1 & df_all$div == "google_tw"] <- b$CI_lower[b$threshold == 0.1 & b$div == "google_tw"]
+df_all$CI_upper[df_all$threshold == 0.1 & df_all$div == "google_tw"] <- b$CI_upper[b$threshold == 0.1 & b$div == "google_tw"]
+df_all$CI_lower[df_all$threshold == 0.2 & df_all$div == "google_tw"] <- b$CI_lower[b$threshold == 0.2 & b$div == "google_tw"]
+df_all$CI_upper[df_all$threshold == 0.2 & df_all$div == "google_tw"] <- b$CI_upper[b$threshold == 0.2 & b$div == "google_tw"]
+df_all$CI_lower[df_all$threshold == 0.3 & df_all$div == "google_tw"] <- b$CI_lower[b$threshold == 0.3 & b$div == "google_tw"]
+df_all$CI_upper[df_all$threshold == 0.3 & df_all$div == "google_tw"] <- b$CI_upper[b$threshold == 0.3 & b$div == "google_tw"]
+
+# google-wikipedia
+df_all$CI_lower[df_all$threshold == 0.1 & df_all$div == "google_wiki"] <- b$CI_lower[b$threshold == 0.1 & b$div == "google_wiki"]
+df_all$CI_upper[df_all$threshold == 0.1 & df_all$div == "google_wiki"] <- b$CI_upper[b$threshold == 0.1 & b$div == "google_wiki"]
+df_all$CI_lower[df_all$threshold == 0.2 & df_all$div == "google_wiki"] <- b$CI_lower[b$threshold == 0.2 & b$div == "google_wiki"]
+df_all$CI_upper[df_all$threshold == 0.2 & df_all$div == "google_wiki"] <- b$CI_upper[b$threshold == 0.2 & b$div == "google_wiki"]
+df_all$CI_lower[df_all$threshold == 0.3 & df_all$div == "google_wiki"] <- b$CI_lower[b$threshold == 0.3 & b$div == "google_wiki"]
+df_all$CI_upper[df_all$threshold == 0.3 & df_all$div == "google_wiki"] <- b$CI_upper[b$threshold == 0.3 & b$div == "google_wiki"]
+
+# twitter-wikipedia
+df_all$CI_lower[df_all$threshold == 0.1 & df_all$div == "tw_wiki"] <- b$CI_lower[b$threshold == 0.1 & b$div == "tw_wiki"]
+df_all$CI_upper[df_all$threshold == 0.1 & df_all$div == "tw_wiki"] <- b$CI_upper[b$threshold == 0.1 & b$div == "tw_wiki"]
+df_all$CI_lower[df_all$threshold == 0.2 & df_all$div == "tw_wiki"] <- b$CI_lower[b$threshold == 0.2 & b$div == "tw_wiki"]
+df_all$CI_upper[df_all$threshold == 0.2 & df_all$div == "tw_wiki"] <- b$CI_upper[b$threshold == 0.2 & b$div == "tw_wiki"]
+df_all$CI_lower[df_all$threshold == 0.3 & df_all$div == "tw_wiki"] <- b$CI_lower[b$threshold == 0.3 & b$div == "tw_wiki"]
+df_all$CI_upper[df_all$threshold == 0.3 & df_all$div == "tw_wiki"] <- b$CI_upper[b$threshold == 0.3 & b$div == "tw_wiki"]
+
+# plot with all pairs and individuals
+df_all_boxplot <- ggplot(df_all, aes(div, turns, color = div, group = div)) + 
+  geom_boxplot(aes(group = div)) +
+  geom_errorbar(aes(ymin = CI_lower, ymax = CI_upper)) +
+  xlab("Networks ordered by diversity (<)") + 
+  ylab("Number of turns") + 
+  ggtitle("Performances of all pairings and individuals") + 
+  facet_wrap(~threshold) +
+  theme_bw()
+df_all_boxplot + stat_summary(fun.y=mean, geom="point", shape=1, size=1.2) +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank())
+
+# plot with only 0.3 threshold bc that's the only one where it's interesting to look at individuals vs pairs
+df_0.3 <- filter(df_all, threshold == 0.3)
+
+df0.3_boxplot <- ggplot(df_0.3, aes(div, turns, color = div, group = div)) + 
+  geom_boxplot(aes(group = div)) +
+  geom_errorbar(aes(ymin = CI_lower, ymax = CI_upper)) +
+  xlab("Networks ordered by diversity (<)") + 
+  ylab("Number of turns") + 
+  ggtitle("Performances of all pairings and individuals at threshold 0.3") + 
+  scale_color_brewer(palette="Dark2") +
+  #facet_wrap(~threshold) +
+  theme_bw()
+df0.3_boxplot + stat_summary(fun.y=mean, geom="point", shape=1, size=1.2) +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank())
+```
+
+```{r}
+# least and most diverse pairs boxplot
+lmost <- filter(df1, div == "same_network" | div == "giga_tw")
+lmost2 <- filter(df1, div == "same_network" | div == "giga_tw" | div == "tw_wiki")
+lmost_boxplot <- ggplot(lmost, aes(div, turns, color = div, "red", group = div)) + 
+  geom_boxplot(aes(group = div)) +
+  geom_errorbar(aes(ymin = CI_lower, ymax = CI_upper)) +
+  xlab("Networks ordered by diversity (<)") + 
+  ylab("Number of turns") + 
+  ggtitle("Least and most diverse pairings") + 
+  scale_color_brewer(palette="Dark2") +
+  facet_wrap(~threshold) +
+  theme_bw()
+lmost_boxplot + stat_summary(fun.y=mean, geom="point", shape=1, size=1.2) +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank())
+
+lmost2_boxplot <- ggplot(lmost2, aes(div, turns, color = div, group = div)) + 
+  geom_boxplot(aes(group = div)) +
+  geom_errorbar(aes(ymin = CI_lower, ymax = CI_upper)) +
+  xlab("Networks ordered by diversity (<)") + 
+  ylab("Number of turns") + 
+  ggtitle("Least and most diverse pairings") + 
+  scale_color_brewer(palette="Dark2") +
+  facet_wrap(~threshold) +
+  theme_bw()
+lmost2_boxplot + stat_summary(fun.y=mean, geom="point", shape=1, size=1.2) +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.text.y.right = element_blank())
+```
