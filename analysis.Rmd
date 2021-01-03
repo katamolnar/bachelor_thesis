@@ -178,57 +178,57 @@ giga_google_stats$sem_netw <- c("giga_google", "giga_google", "giga_google")
 
 
 # Gigaword-Twitter pairs
-gigaw_tw <- filter(df1, div == "giga_tw")
+giga_tw <- filter(df1, div == "giga_tw")
 
-gigaw_tw_stats <- gigaw_tw%>% group_by(threshold) %>%
+giga_tw_stats <- giga_tw%>% group_by(threshold) %>%
   summarise(mean(turns),
             max(turns),
             min(turns),
             var(turns))
 
 # change the names
-names(gigaw_tw_stats)[names(gigaw_tw_stats) == "mean(turns)"] <- "mean_turns"
-names(gigaw_tw_stats)[names(gigaw_tw_stats) == "max(turns)"] <- "max_turns"
-names(gigaw_tw_stats)[names(gigaw_tw_stats) == "min(turns)"] <- "min_turns"
-names(gigaw_tw_stats)[names(gigaw_tw_stats) == "var(turns)"] <- "var_turns"
+names(giga_tw_stats)[names(giga_tw_stats) == "mean(turns)"] <- "mean_turns"
+names(giga_tw_stats)[names(giga_tw_stats) == "max(turns)"] <- "max_turns"
+names(giga_tw_stats)[names(giga_tw_stats) == "min(turns)"] <- "min_turns"
+names(giga_tw_stats)[names(giga_tw_stats) == "var(turns)"] <- "var_turns"
 
 # calculate 95% CIs
-#t.test(gigaw_tw$turns[gigaw_tw$threshold == 0.1], conf.level = 0.95) # 40.19754 44.07246
-#t.test(gigaw_tw$turns[gigaw_tw$threshold == 0.2], conf.level = 0.95) # 29.43768 32.36232
-#t.test(gigaw_tw$turns[gigaw_tw$threshold == 0.3], conf.level = 0.95) # 15.36736 17.59264
+#t.test(giga_tw$turns[giga_tw$threshold == 0.1], conf.level = 0.95) # 40.19754 44.07246
+#t.test(giga_tw$turns[giga_tw$threshold == 0.2], conf.level = 0.95) # 29.43768 32.36232
+#t.test(giga_tw$turns[giga_tw$threshold == 0.3], conf.level = 0.95) # 15.36736 17.59264
 
 # add CIs to table
-gigaw_tw_stats$CI_lower <- c(40.19754, 29.43768, 15.36736)
-gigaw_tw_stats$CI_upper <- c(44.07246, 32.36232, 17.59264)
+giga_tw_stats$CI_lower <- c(40.19754, 29.43768, 15.36736)
+giga_tw_stats$CI_upper <- c(44.07246, 32.36232, 17.59264)
 
-gigaw_tw_stats$sem_netw <- c("giga_tw","giga_tw","giga_tw")
+giga_tw_stats$sem_netw <- c("giga_tw","giga_tw","giga_tw")
 
 
 # Gigaword-Wikipedia pairs
-gigaw_wiki <- filter(df1, div == "giga_wiki")
+giga_wiki <- filter(df1, div == "giga_wiki")
 
-gigaw_wiki_stats <- gigaw_wiki%>% group_by(threshold) %>%
+giga_wiki_stats <- giga_wiki%>% group_by(threshold) %>%
   summarise(mean(turns),
             max(turns),
             min(turns),
             var(turns))
 
 # change the names
-names(gigaw_wiki_stats)[names(gigaw_wiki_stats) == "mean(turns)"] <- "mean_turns"
-names(gigaw_wiki_stats)[names(gigaw_wiki_stats) == "max(turns)"] <- "max_turns"
-names(gigaw_wiki_stats)[names(gigaw_wiki_stats) == "min(turns)"] <- "min_turns"
-names(gigaw_wiki_stats)[names(gigaw_wiki_stats) == "var(turns)"] <- "var_turns"
+names(giga_wiki_stats)[names(giga_wiki_stats) == "mean(turns)"] <- "mean_turns"
+names(giga_wiki_stats)[names(giga_wiki_stats) == "max(turns)"] <- "max_turns"
+names(giga_wiki_stats)[names(giga_wiki_stats) == "min(turns)"] <- "min_turns"
+names(giga_wiki_stats)[names(giga_wiki_stats) == "var(turns)"] <- "var_turns"
 
 # calculate 95% CIs
-#t.test(gigaw_wiki$turns[gigaw_wiki$threshold == 0.1], conf.level = 0.95) # 39.51353 43.54647
-#t.test(gigaw_wiki$turns[gigaw_wiki$threshold == 0.2], conf.level = 0.95) # 28.82374 31.45126
-#t.test(gigaw_wiki$turns[gigaw_wiki$threshold == 0.3], conf.level = 0.95) # 15.99267 18.19233
+#t.test(giga_wiki$turns[giga_wiki$threshold == 0.1], conf.level = 0.95) # 39.51353 43.54647
+#t.test(giga_wiki$turns[giga_wiki$threshold == 0.2], conf.level = 0.95) # 28.82374 31.45126
+#t.test(giga_wiki$turns[giga_wiki$threshold == 0.3], conf.level = 0.95) # 15.99267 18.19233
 
 # add CIs to table
-gigaw_wiki_stats$CI_lower <- c(39.51353, 28.82374, 15.99267)
-gigaw_wiki_stats$CI_upper <- c(43.54647, 31.45126, 18.19233)
+giga_wiki_stats$CI_lower <- c(39.51353, 28.82374, 15.99267)
+giga_wiki_stats$CI_upper <- c(43.54647, 31.45126, 18.19233)
 
-gigaw_wiki_stats$sem_netw <- c("giga_wiki", "giga_wiki", "giga_wiki")
+giga_wiki_stats$sem_netw <- c("giga_wiki", "giga_wiki", "giga_wiki")
 
 
 # Google-Twitter pairs
@@ -314,7 +314,7 @@ tw_wiki_stats$CI_upper <- c(46.09976, 34.78183, 25.27358)
 tw_wiki_stats$sem_netw <- c("tw_wiki", "tw_wiki", "tw_wiki")
 
 # combine all diff pair combinations
-all <- rbind(google_gigaw_stats, gigaw_tw_stats, gigaw_wiki_stats, tw_google_stats, wiki_google_stats, tw_wiki_stats)
+all <- rbind(giga_google_stats, giga_tw_stats, giga_wiki_stats, google_tw_stats, google_wiki_stats, tw_wiki_stats)
 
 
 # Same-network pairs
